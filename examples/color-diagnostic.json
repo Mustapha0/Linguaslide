@@ -1,0 +1,15 @@
+{
+  "name": "Color Diagnostic",
+  "layout": "frame",
+  "theme": {
+    "background": "#0F172A",
+    "primary": "#FFFFFF",
+    "muted": "#94A3B8",
+    "accent": "#F43F5E",
+    "fontFamily": "Courier New"
+  },
+  "layouts": [
+    { "type": "content", "title": "Dark navy background?", "body": ["White text on navy", "Rose accent line"] },
+    { "type": "content", "title": "Courier font?", "body": ["This should be monospace"] }
+  ]
+}

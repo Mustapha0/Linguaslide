@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "linguaslides-template-1.0",
+  "id": "map-isogloss-custom",
+  "name": "Map / Isogloss — Custom Palette",
+  "description": "A linguistic atlas template for dialect boundaries and isoglosses.",
+  "category": "Dialectology",
+  "tags": ["Dialectology", "Sociolinguistics", "Language Change"],
+  "layout": "map",
+  "theme": {
+    "background": "#F3F0E5",
+    "primary": "#293B36",
+    "text": "#293B36",
+    "muted": "#68766E",
+    "accent": "#B35E45",
+    "fontFamily": "Source Serif 4"
+  },
+  "layouts": [
+    { "type": "title", "title": "Dialect boundaries in the BATH vowel", "body": [] },
+    { "type": "map", "title": "Regional distribution", "body": ["Map verified field sites", "Distinguish variants with the accent palette"] },
+    { "type": "map", "title": "Isogloss analysis", "body": ["Mark the observed boundary", "Explain exceptions and uncertainty"] },
+    { "type": "content", "title": "Change over time", "body": ["Compare historical and contemporary evidence"] },
+    { "type": "content", "title": "Conclusion", "body": ["Summarize the linguistic pattern and its limits"] }
+  ]
+}

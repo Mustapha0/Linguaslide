@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1.0.0",
+  "templateId": "plain-content",
+  "title": "Plain Content Slides",
+  "theme": {
+    "name": "Plain White",
+    "colorTokens": {
+      "background": "#FFFFFF",
+      "primary": "#111111",
+      "secondary": "#444444",
+      "accent": "#111111"
+    }
+  },
+  "slides": [
+    {
+      "id": "slide-1",
+      "type": "content",
+      "title": "Your title here",
+      "slots": {
+        "body": "Replace this with your slide text."
+      }
+    },
+    {
+      "id": "slide-2",
+      "type": "bullets",
+      "title": "Key points",
+      "slots": {
+        "body": "First point\nSecond point\nThird point"
+      }
+    }
+  ]
+}

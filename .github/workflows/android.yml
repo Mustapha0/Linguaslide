@@ -1,0 +1,322 @@
+name: Android APK Build
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Python (for icon generation)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build web app
+        run: |
+          npm run build
+          test -f dist/index.html
+
+      - name: Create Android project
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Install native Android Documents saver
+        run: |
+          mkdir -p android/app/src/main/java/com/example/linguaslides
+          cat > android/app/src/main/java/com/example/linguaslides/NativeDocumentSaverPlugin.java <<'JAVA'
+          package com.example.linguaslides;
+
+          import android.app.Activity;
+          import android.content.Intent;
+          import android.content.ContentResolver;
+          import android.content.ContentValues;
+          import android.net.Uri;
+          import android.os.Build;
+          import android.os.Environment;
+          import android.provider.DocumentsContract;
+          import android.provider.MediaStore;
+          import android.util.Base64;
+          import androidx.activity.result.ActivityResult;
+          import com.getcapacitor.JSObject;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.ActivityCallback;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+          import java.io.OutputStream;
+          import java.io.InputStream;
+          import java.io.IOException;
+          import java.io.File;
+          import java.io.FileOutputStream;
+          import java.io.FileInputStream;
+
+          @CapacitorPlugin(name = "NativeDocumentSaver")
+          public class NativeDocumentSaverPlugin extends Plugin {
+              private String pendingPath = "";
+              private String pendingName = "";
+
+              @PluginMethod
+              public void save(PluginCall call) {
+                  String filename = call.getString("filename", "linguaslides-export.json");
+                  String mimeType = call.getString("mimeType", "application/octet-stream");
+                  String data = call.getString("data", "");
+                  if (data == null || data.length() < 4) {
+                      call.reject("No file data was provided; refusing to create a zero-byte file.");
+                      return;
+                  }
+                  byte[] bytes;
+                  try {
+                      bytes = Base64.decode(data, Base64.DEFAULT);
+                  } catch (Exception e) {
+                      call.reject("Could not decode file data: " + e.getMessage());
+                      return;
+                  }
+                  if (bytes.length < 1) {
+                      call.reject("Decoded file is empty; refusing to save 0 bytes.");
+                      return;
+                  }
+                  Integer expected = call.getInt("expectedBytes");
+                  if (expected != null && expected.intValue() != bytes.length) {
+                      call.reject("File data length mismatch: expected " + expected + " bytes but received " + bytes.length + ".");
+                      return;
+                  }
+                  // Android 10+: write straight into Documents/LinguaSlides. No picker, so there is no empty placeholder
+                  // file and nothing is lost if Android recreates the app while a picker is open.
+                  if (Build.VERSION.SDK_INT >= 29) {
+                      ContentResolver resolver = getContext().getContentResolver();
+                      Uri target = null;
+                      try {
+                          ContentValues values = new ContentValues();
+                          values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
+                          values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+                          values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + "/LinguaSlides");
+                          values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                          target = resolver.insert(MediaStore.Files.getContentUri("external"), values);
+                          if (target == null) throw new IOException("Could not create the file in Documents.");
+                          try (OutputStream out = resolver.openOutputStream(target, "w")) {
+                              if (out == null) throw new IOException("Could not open the Documents file for writing.");
+                              out.write(bytes);
+                              out.flush();
+                          }
+                          long saved = 0;
+                          try (InputStream in = resolver.openInputStream(target)) {
+                              if (in == null) throw new IOException("Could not verify the saved file.");
+                              byte[] buf = new byte[8192];
+                              int n;
+                              while ((n = in.read(buf)) != -1) saved += n;
+                          }
+                          if (saved != bytes.length) throw new IOException("Saved size mismatch: expected " + bytes.length + " bytes, read back " + saved + ".");
+                          ContentValues done = new ContentValues();
+                          done.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                          resolver.update(target, done, null, null);
+                          JSObject ok = new JSObject();
+                          ok.put("cancelled", false);
+                          ok.put("uri", target.toString());
+                          ok.put("filename", filename);
+                          ok.put("bytesWritten", saved);
+                          ok.put("location", "Documents/LinguaSlides");
+                          call.resolve(ok);
+                          return;
+                      } catch (Exception directError) {
+                          if (target != null) {
+                              try { resolver.delete(target, null, null); } catch (Exception ignore) { }
+                          }
+                          // fall through to the Save-as picker below
+                      }
+                  }
+                  try {
+                      // Stage payload to app-private storage before launching the picker. This protects
+                      // the bytes if Android recreates the Activity while the document picker is open.
+                      File staged = File.createTempFile("linguaslides-export-", ".bin", getContext().getCacheDir());
+                      try (FileOutputStream fileOut = new FileOutputStream(staged)) {
+                          fileOut.write(bytes);
+                          fileOut.flush();
+                          fileOut.getFD().sync();
+                      }
+                      pendingPath = staged.getAbsolutePath();
+                      pendingName = filename;
+                  } catch (Exception e) {
+                      call.reject("Could not stage export data: " + e.getMessage(), e);
+                      return;
+                  }
+                  Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                  intent.addCategory(Intent.CATEGORY_OPENABLE);
+                  intent.setType(mimeType);
+                  intent.putExtra(Intent.EXTRA_TITLE, filename);
+                  startActivityForResult(call, intent, "handleSaveResult");
+              }
+
+              @ActivityCallback
+              public void handleSaveResult(PluginCall call, ActivityResult result) {
+                  String stagedPath = pendingPath;
+                  String name = pendingName;
+                  pendingPath = "";
+                  pendingName = "";
+                  if (call == null) { return; }
+                  Intent resultIntent = result == null ? null : result.getData();
+                  if (result == null || result.getResultCode() != Activity.RESULT_OK || resultIntent == null || resultIntent.getData() == null) {
+                      if (!stagedPath.isEmpty()) new File(stagedPath).delete();
+                      JSObject cancelled = new JSObject();
+                      cancelled.put("cancelled", true);
+                      call.resolve(cancelled);
+                      return;
+                  }
+                  if (stagedPath == null || stagedPath.isEmpty()) {
+                      call.reject("Export data was lost before the save completed. Please export again.");
+                      return;
+                  }
+                  Uri uri = resultIntent.getData();
+                  File staged = new File(stagedPath);
+                  try {
+                      if (!staged.isFile() || staged.length() < 1) throw new IOException("Staged export is empty.");
+                      long expectedBytes = staged.length();
+                      try (InputStream input = new FileInputStream(staged);
+                           OutputStream output = getContext().getContentResolver().openOutputStream(uri, "w")) {
+                          if (output == null) throw new IOException("Could not open the selected destination.");
+                          byte[] buffer = new byte[8192];
+                          int count;
+                          long written = 0;
+                          while ((count = input.read(buffer)) != -1) {
+                              output.write(buffer, 0, count);
+                              written += count;
+                          }
+                          output.flush();
+                          if (written != expectedBytes) {
+                              throw new IOException("Write count mismatch: expected " + expectedBytes + " bytes, wrote " + written + ".");
+                          }
+                      }
+                      // Read back the saved document and verify byte count; do not report success for 0 B files.
+                      long savedBytes = 0;
+                      try (InputStream verify = getContext().getContentResolver().openInputStream(uri)) {
+                          if (verify == null) throw new IOException("Could not verify the saved file.");
+                          byte[] buffer = new byte[8192];
+                          int count;
+                          while ((count = verify.read(buffer)) != -1) savedBytes += count;
+                      }
+                      if (savedBytes != expectedBytes || savedBytes < 1) {
+                          throw new IOException("Saved file size mismatch: expected " + expectedBytes + " bytes, read back " + savedBytes + ".");
+                      }
+                      JSObject response = new JSObject();
+                      response.put("cancelled", false);
+                      response.put("uri", uri.toString());
+                      response.put("filename", name);
+                      response.put("bytesWritten", savedBytes);
+                      call.resolve(response);
+                  } catch (Exception error) {
+                      try { DocumentsContract.deleteDocument(getContext().getContentResolver(), uri); } catch (Exception ignore) { }
+                    call.reject("Could not save and verify the file: " + error.getMessage(), error);
+                  } finally {
+                      staged.delete();
+                  }
+              }
+          }
+          JAVA
+          cat > android/app/src/main/java/com/example/linguaslides/MainActivity.java <<'JAVA'
+          package com.example.linguaslides;
+          import com.getcapacitor.BridgeActivity;
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(android.os.Bundle savedInstanceState) {
+                  registerPlugin(NativeDocumentSaverPlugin.class);
+                  super.onCreate(savedInstanceState);
+              }
+          }
+          JAVA
+
+      - name: Apply app icon
+        run: |
+          python -m pip install --quiet pillow
+          python - <<'PY'
+          import base64, io, os
+          from PIL import Image, ImageDraw, ImageFilter, ImageChops
+
+          RES = os.environ.get("RES_DIR", "android/app/src/main/res")
+          NAVY = (13, 31, 83, 255)
+          SRC = "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"
+
+          sq = Image.open(io.BytesIO(base64.b64decode(SRC))).convert("RGBA")
+          N = sq.size[0]
+
+          # Soft-edged copy for the adaptive foreground (fades the outer border into the navy background)
+          m = Image.new("L", (N, N), 0)
+          ImageDraw.Draw(m).rectangle((round(N*0.06), round(N*0.06), N-round(N*0.06), N-round(N*0.06)), fill=255)
+          m = m.filter(ImageFilter.GaussianBlur(N*0.028))
+          alpha = ImageChops.multiply(m, sq.split()[3].filter(ImageFilter.MinFilter(3)))
+          soft = sq.copy(); soft.putalpha(alpha)
+
+          def fit(img, size):
+              return img.resize((size, size), Image.LANCZOS)
+
+          dens = {"mdpi": (48, 108), "hdpi": (72, 162), "xhdpi": (96, 216), "xxhdpi": (144, 324), "xxxhdpi": (192, 432)}
+          for d, (legacy, fg) in dens.items():
+              out = os.path.join(RES, "mipmap-" + d)
+              os.makedirs(out, exist_ok=True)
+              for stale in ("ic_launcher.webp", "ic_launcher_round.webp", "ic_launcher_foreground.webp"):
+                  p = os.path.join(out, stale)
+                  if os.path.exists(p): os.remove(p)
+              c = Image.new("RGBA", (fg, fg), (0, 0, 0, 0)); inner = round(fg * 0.72)
+              c.alpha_composite(fit(soft, inner), ((fg - inner) // 2, (fg - inner) // 2))
+              c.save(os.path.join(out, "ic_launcher_foreground.png"))
+              fit(sq, legacy).save(os.path.join(out, "ic_launcher.png"))
+              S = legacy * 4
+              r = Image.new("RGBA", (S, S), (0, 0, 0, 0)); ImageDraw.Draw(r).ellipse((0, 0, S-1, S-1), fill=NAVY)
+              inner = round(S * 0.86); r.alpha_composite(fit(sq, inner), ((S - inner) // 2, (S - inner) // 2))
+              mask = Image.new("L", (S, S), 0); ImageDraw.Draw(mask).ellipse((0, 0, S-1, S-1), fill=255)
+              r.putalpha(Image.composite(r.split()[3], Image.new("L", (S, S), 0), mask))
+              r.resize((legacy, legacy), Image.LANCZOS).save(os.path.join(out, "ic_launcher_round.png"))
+
+          v26 = os.path.join(RES, "mipmap-anydpi-v26"); os.makedirs(v26, exist_ok=True)
+          xml = """<?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background"/>
+              <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+          </adaptive-icon>
+          """
+          for n in ("ic_launcher.xml", "ic_launcher_round.xml"):
+              open(os.path.join(v26, n), "w").write(xml)
+          vals = os.path.join(RES, "values"); os.makedirs(vals, exist_ok=True)
+          open(os.path.join(vals, "ic_launcher_background.xml"), "w").write(
+              '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#0D1F53</color>\n</resources>\n')
+          print("App icons generated in", RES)
+          PY
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linguaslides-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

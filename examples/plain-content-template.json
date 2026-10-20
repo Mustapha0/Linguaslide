@@ -1,0 +1,45 @@
+{
+  "id": "plain-content",
+  "name": "Plain Content (White)",
+  "description": "Minimal generic template with a white background and dark text.",
+  "category": "General",
+  "tags": [
+    "General",
+    "Plain",
+    "Content"
+  ],
+  "layout": "frame",
+  "theme": {
+    "background": "#FFFFFF",
+    "primary": "#111111",
+    "text": "#111111",
+    "muted": "#444444",
+    "accent": "#111111",
+    "fontFamily": "Arial"
+  },
+  "layouts": [
+    {
+      "type": "title",
+      "title": "Your title here",
+      "body": [
+        "Replace this with your title slide text."
+      ]
+    },
+    {
+      "type": "content",
+      "title": "Key points",
+      "body": [
+        "First point",
+        "Second point",
+        "Third point"
+      ]
+    },
+    {
+      "type": "content",
+      "title": "Supporting details",
+      "body": [
+        "Add the supporting text you want displayed on this slide."
+      ]
+    }
+  ]
+}

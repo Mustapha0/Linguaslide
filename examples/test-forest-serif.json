@@ -1,0 +1,18 @@
+{
+  "name": "Forest Serif Test",
+  "layout": "frame",
+  "theme": {
+    "background": "#F4EFE1",
+    "primary": "#1F3D2B",
+    "muted": "#6B7F6F",
+    "accent": "#B8452F",
+    "fontFamily": "Georgia"
+  },
+  "layouts": [
+    { "type": "title", "title": "Forest Serif Test", "body": ["Cream background, dark green text", "Rust accent line, Georgia font"] },
+    { "type": "content", "title": "Key points", "body": ["Point one", "Point two", "Point three", "Point four"] },
+    { "type": "content", "title": "A longer paragraph", "body": ["This slide checks that a longer line of text wraps cleanly inside the slide area without being cut off at the edges."] },
+    { "type": "bullets", "title": "Special characters", "body": ["Accents: café, naïve, façade", "IPA: ʃ ŋ ɛ ə", "Symbols: → ✓ & “quotes”"] },
+    { "type": "content", "title": "Conclusion", "body": ["Thank you", "Questions welcome"] }
+  ]
+}

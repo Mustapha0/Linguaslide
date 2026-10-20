@@ -1,0 +1,16 @@
+{
+  "name": "Plain Text Slides",
+  "layout": "frame",
+  "theme": {
+    "background": "#FFFFFF",
+    "primary": "#111111",
+    "muted": "#444444",
+    "accent": "#111111",
+    "fontFamily": "Arial"
+  },
+  "layouts": [
+    { "type": "content", "title": "Slide 1 title", "body": ["First line of text", "Second line of text"] },
+    { "type": "content", "title": "Slide 2 title", "body": ["First line of text", "Second line of text"] },
+    { "type": "bullets", "title": "Slide 3 title", "body": ["Point one", "Point two", "Point three"] }
+  ]
+}

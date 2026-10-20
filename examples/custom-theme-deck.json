@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0.0",
+  "templateId": "custom",
+  "title": "My Custom Deck",
+  "language": "English",
+  "theme": {
+    "name": "My Custom Theme",
+    "typeface": "Georgia",
+    "layout": "frame",
+    "colorTokens": {
+      "primary": "#1B2A41",
+      "secondary": "#5C6B7A",
+      "accent": "#C8553D",
+      "background": "#FAF7F0"
+    }
+  },
+  "slides": [
+    { "id": "slide-1", "type": "title", "title": "My Custom Deck", "slots": { "body": "Subtitle or opening line" } },
+    { "id": "slide-2", "type": "content", "title": "First topic", "slots": { "body": "First point\nSecond point\nThird point" } },
+    { "id": "slide-3", "type": "content", "title": "Second topic", "slots": { "body": "Replace with your text" } }
+  ]
+}
